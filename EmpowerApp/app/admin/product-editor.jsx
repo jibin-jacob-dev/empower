@@ -44,52 +44,81 @@ const FormInput = memo(({ label, value, onChangeText, placeholder, keyboardType 
   </View>
 ));
 
-const CategorySelector = memo(({ label, categories, selectedCategory, onSelect, onCustomChange, customValue, theme }) => (
-  <View style={styles.inputGroup}>
-    <Text style={[styles.label, { color: theme.icon }]}>{label}</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-      {categories.map((cat) => (
-        <TouchableOpacity 
-          key={cat}
-          style={[
-            styles.categoryChip, 
-            { backgroundColor: theme.surface, borderColor: theme.border },
-            selectedCategory === cat && { backgroundColor: theme.tint, borderColor: theme.tint }
-          ]}
-          onPress={() => onSelect(cat)}
-        >
-          <Text style={[styles.categoryText, { color: theme.text }, selectedCategory === cat && { color: 'white' }]}>
-            {cat}
-          </Text>
+const CategorySelector = memo(({ categories, selectedCategory, onSelect, theme }) => {
+  const [search, setSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const filtered = categories.filter(c => 
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <View style={styles.inputGroup}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={[styles.label, { color: theme.icon, marginBottom: 0 }]}>Category</Text>
+        <TouchableOpacity onPress={() => router.push('/admin/categories')}>
+          <Text style={{ color: theme.tint, fontSize: 13, fontWeight: '700' }}>Manage All</Text>
         </TouchableOpacity>
-      ))}
-      <TouchableOpacity 
-        style={[
-          styles.categoryChip, 
-          { backgroundColor: theme.surface, borderColor: theme.border },
-          selectedCategory === 'Other' && { backgroundColor: theme.tint, borderColor: theme.tint }
-        ]}
-        onPress={() => onSelect('Other')}
-      >
-        <Text style={[styles.categoryText, { color: theme.text }, selectedCategory === 'Other' && { color: 'white' }]}>
-          + New
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
-    
-    {selectedCategory === 'Other' && (
-      <View style={[styles.inputWrapper, { backgroundColor: theme.surface, borderColor: theme.border, marginTop: 10 }]}>
+      </View>
+      
+      <View style={[styles.inputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <TextInput
           style={[styles.input, { color: theme.text }]}
-          value={customValue}
-          onChangeText={onCustomChange}
-          placeholder="Type new category..."
+          value={showDropdown ? search : (selectedCategory || search)}
+          onChangeText={(t) => {
+            setSearch(t);
+            setShowDropdown(true);
+          }}
+          onFocus={() => {
+            setShowDropdown(true);
+            setSearch(selectedCategory || '');
+          }}
+          placeholder="Search or type category..."
           placeholderTextColor={theme.icon + '80'}
         />
+        <Ionicons 
+          name={showDropdown ? "chevron-up" : "search-outline"} 
+          size={18} 
+          color={theme.icon} 
+          style={{ position: 'absolute', right: 16, top: 14 }}
+        />
       </View>
-    )}
-  </View>
-));
+
+      {showDropdown && (
+        <View style={[styles.dropdown, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {filtered.map((cat) => (
+              <TouchableOpacity 
+                key={cat.id}
+                style={[styles.dropItem, { borderBottomColor: theme.border + '20' }]}
+                onPress={() => {
+                  onSelect(cat.name);
+                  setSearch(cat.name);
+                  setShowDropdown(false);
+                  Keyboard.dismiss();
+                }}
+              >
+                <Text style={[styles.dropText, { color: theme.text }]}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {search.length > 0 && !categories.some(c => c.name.toLowerCase() === search.toLowerCase()) && (
+              <TouchableOpacity 
+                style={styles.dropItem}
+                onPress={() => {
+                  onSelect(search);
+                  setShowDropdown(false);
+                  Keyboard.dismiss();
+                }}
+              >
+                <Text style={[styles.dropText, { color: theme.tint, fontWeight: '800' }]}>+ Add "{search}"</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+});
 
 // --- Main Screen ---
 
@@ -108,8 +137,6 @@ export default function ProductEditor() {
   });
   
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,7 +148,7 @@ export default function ProductEditor() {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get(`${Endpoints.Products}/categories`);
+      const response = await axios.get(`${Endpoints.Categories}?type=Product`);
       setCategories(response.data);
     } catch (err) {
       console.error('Fetch categories error:', err);
@@ -144,13 +171,6 @@ export default function ProductEditor() {
         stockQuantity: p.stockQuantity.toString(),
         imageUrl: p.imageUrl || ''
       });
-      
-      if (categories.includes(p.category)) {
-        setSelectedCategory(p.category);
-      } else {
-        setSelectedCategory('Other');
-        setCustomCategory(p.category);
-      }
     } catch (err) {
       Alert.alert('Error', 'Could not load product details');
     } finally {
@@ -204,8 +224,7 @@ export default function ProductEditor() {
       return;
     }
 
-    const finalCategory = selectedCategory === 'Other' ? customCategory : selectedCategory;
-    if (!finalCategory) {
+    if (!form.category) {
       Alert.alert('Validation', 'Please select or enter a category.');
       return;
     }
@@ -215,7 +234,6 @@ export default function ProductEditor() {
       const token = await SecureStore.getItemAsync('userToken');
       const payload = {
         ...form,
-        category: finalCategory,
         price: parseFloat(form.price),
         stockQuantity: parseInt(form.stockQuantity)
       };
@@ -263,7 +281,11 @@ export default function ProductEditor() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.form} contentContainerStyle={{ paddingBottom: 40 }}>
+          <ScrollView 
+            style={styles.form} 
+            contentContainerStyle={{ paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Image Section */}
             <TouchableOpacity style={[styles.imagePicker, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={pickImage}>
               {form.imageUrl ? (
@@ -290,12 +312,9 @@ export default function ProductEditor() {
             />
 
             <CategorySelector 
-              label="Category"
               categories={categories}
-              selectedCategory={selectedCategory}
-              onSelect={setSelectedCategory}
-              customValue={customCategory}
-              onCustomChange={setCustomCategory}
+              selectedCategory={form.category}
+              onSelect={(t) => setForm(p => ({ ...p, category: t }))}
               theme={theme}
             />
 
@@ -349,12 +368,25 @@ const styles = StyleSheet.create({
   previewImage: { width: '100%', height: '100%' },
   imagePlaceholder: { alignItems: 'center' },
   imageOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-  inputGroup: { marginBottom: 20 },
+  inputGroup: { marginBottom: 20, zIndex: 10 },
   label: { fontSize: 13, fontWeight: '700', marginBottom: 8, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   inputWrapper: { borderRadius: 14, borderWidth: 1.5, overflow: 'hidden' },
-  input: { paddingHorizontal: 16, fontSize: 16, fontWeight: '600' },
+  input: { paddingHorizontal: 16, fontSize: 16, fontWeight: '600', height: 48 },
   row: { flexDirection: 'row' },
-  categoryScroll: { marginBottom: 4 },
-  categoryChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, marginRight: 8 },
-  categoryText: { fontSize: 14, fontWeight: '700' }
+  dropdown: { 
+    position: 'absolute', 
+    top: 75, 
+    left: 0, 
+    right: 0, 
+    borderRadius: 14, 
+    borderWidth: 1.5, 
+    zIndex: 100,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10
+  },
+  dropItem: { padding: 14, borderBottomWidth: 1 },
+  dropText: { fontSize: 15, fontWeight: '600' }
 });

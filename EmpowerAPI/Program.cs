@@ -109,6 +109,21 @@ using (var scope = app.Services.CreateScope())
             await userManager.AddToRoleAsync(admin, "Admin");
         }
     }
+
+    // Seed Categories
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (!await context.Categories.AnyAsync())
+    {
+        var cats = new List<Category>
+        {
+            new Category { Name = "Supplements", TargetType = "Product" },
+            new Category { Name = "Clothing", TargetType = "Product" },
+            new Category { Name = "Strength", TargetType = "Training" },
+            new Category { Name = "Cardio", TargetType = "Training" }
+        };
+        await context.AddRangeAsync(cats);
+        await context.SaveChangesAsync();
+    }
 }
 
 app.MapControllers();

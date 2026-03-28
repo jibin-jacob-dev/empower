@@ -8,5 +8,6 @@ export const Endpoints = {
     Profile: `${API_URL}/Profile`,
     UploadImage: `${API_URL}/Profile/upload-image`,
     Products: `${API_URL}/Products`,
-    Trainings: `${API_URL}/Trainings`
+    Trainings: `${API_URL}/Trainings`,
+    Categories: `${API_URL}/Categories`
 };

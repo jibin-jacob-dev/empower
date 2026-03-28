@@ -68,6 +68,38 @@ const ProductItem = memo(({ item, theme, onEdit, onDelete }) => (
   </View>
 ));
 
+const CategoryItem = memo(({ item, theme, onEdit, onDelete }) => (
+  <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View style={[styles.typeBadge, { backgroundColor: theme.tint + '15' }]}>
+      <Text style={[styles.typeText, { color: theme.tint }]}>
+        {item.targetType ? item.targetType[0] : 'C'}
+      </Text>
+    </View>
+    <View style={styles.itemInfo}>
+      <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>
+        {item.name || 'Unnamed Category'}
+      </Text>
+      <Text style={[styles.itemMeta, { color: theme.icon }]}>
+        {item.targetType || 'General'} Category
+      </Text>
+    </View>
+    <View style={styles.actions}>
+      <TouchableOpacity 
+        style={[styles.actionBtn, { backgroundColor: theme.tint + '15' }]} 
+        onPress={() => onEdit(item, 'category')}
+      >
+        <Ionicons name="create-outline" size={20} color={theme.tint} />
+      </TouchableOpacity>
+      <TouchableOpacity 
+        style={[styles.actionBtn, { backgroundColor: '#FF3B3015' }]} 
+        onPress={() => onDelete(item.id, item.name, 'category')}
+      >
+        <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+      </TouchableOpacity>
+    </View>
+  </View>
+));
+
 export default function AdminManageScreen() {
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useTheme();
@@ -85,7 +117,10 @@ export default function AdminManageScreen() {
     try {
       setLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
-      const url = activeTab === 'trainings' ? Endpoints.Trainings : Endpoints.Products;
+      let url = Endpoints.Trainings;
+      if (activeTab === 'products') url = Endpoints.Products;
+      if (activeTab === 'categories') url = Endpoints.Categories;
+
       const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -101,7 +136,7 @@ export default function AdminManageScreen() {
 
   const handleDelete = (id, title, type) => {
     Alert.alert(
-      `Delete ${type === 'training' ? 'Training' : 'Product'}`,
+      `Delete ${type.charAt(0).toUpperCase() + type.slice(1)}`,
       `Are you sure you want to delete "${title}"?`,
       [
         { text: "Cancel", style: "cancel" },
@@ -111,7 +146,10 @@ export default function AdminManageScreen() {
           onPress: async () => {
             try {
               const token = await SecureStore.getItemAsync('userToken');
-              const url = type === 'training' ? Endpoints.Trainings : Endpoints.Products;
+              let url = Endpoints.Trainings;
+              if (type === 'product') url = Endpoints.Products;
+              if (type === 'category') url = Endpoints.Categories;
+
               await axios.delete(`${url}/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
               });
@@ -125,12 +163,20 @@ export default function AdminManageScreen() {
     );
   };
 
-  const handleEdit = (id, type) => {
+  const handleEdit = (itemOrId, type) => {
+    if (type === 'category') {
+      router.push({ pathname: '/admin/categories', params: { id: itemOrId.id } });
+      return;
+    }
     const pathname = type === 'training' ? '/admin/training-editor' : '/admin/product-editor';
-    router.push({ pathname, params: { id } });
+    router.push({ pathname, params: { id: itemOrId } });
   };
 
   const handleAdd = () => {
+    if (activeTab === 'categories') {
+      router.push('/admin/categories');
+      return;
+    }
     const pathname = activeTab === 'trainings' ? '/admin/training-editor' : '/admin/product-editor';
     router.push(pathname);
   };
@@ -168,6 +214,12 @@ export default function AdminManageScreen() {
         >
           <Text style={[styles.tabText, { color: activeTab === 'products' ? theme.text : theme.icon }]}>Products</Text>
         </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'categories' && { borderBottomColor: theme.tint }]}
+          onPress={() => setActiveTab('categories')}
+        >
+          <Text style={[styles.tabText, { color: activeTab === 'categories' ? theme.text : theme.icon }]}>Categories</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -175,24 +227,12 @@ export default function AdminManageScreen() {
       ) : (
         <FlatList
           data={data}
-          renderItem={({ item }) => (
-            activeTab === 'trainings' ? (
-              <TrainingItem 
-                item={item} 
-                theme={theme} 
-                onEdit={handleEdit} 
-                onDelete={handleDelete} 
-              />
-            ) : (
-              <ProductItem 
-                item={item} 
-                theme={theme} 
-                onEdit={handleEdit} 
-                onDelete={handleDelete} 
-              />
-            )
-          )}
-          keyExtractor={(item) => (item.id || item.name).toString()}
+          renderItem={({ item }) => {
+            if (activeTab === 'trainings') return <TrainingItem item={item} theme={theme} onEdit={handleEdit} onDelete={handleDelete} />;
+            if (activeTab === 'products') return <ProductItem item={item} theme={theme} onEdit={handleEdit} onDelete={handleDelete} />;
+            return <CategoryItem item={item} theme={theme} onEdit={handleEdit} onDelete={handleDelete} />;
+          }}
+          keyExtractor={(item) => (item.id || item.name || Math.random()).toString()}
           contentContainerStyle={[styles.list, { paddingBottom: 40 + insets.bottom }]}
           onRefresh={fetchData}
           refreshing={refreshing}
@@ -225,6 +265,8 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   itemTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
   itemMeta: { fontSize: 12, fontWeight: '600', opacity: 0.7 },
+  typeBadge: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  typeText: { fontSize: 14, fontWeight: '800' },
   actions: { flexDirection: 'row', gap: 8 },
   actionBtn: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   empty: { flex: 1, marginTop: 100, alignItems: 'center', justifyContent: 'center', opacity: 0.5 },
