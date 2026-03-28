@@ -13,10 +13,64 @@ namespace EmpowerAPI.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public ProductsController(ApplicationDbContext context)
+        public ProductsController(ApplicationDbContext context, IWebHostEnvironment env)
         {
             _context = context;
+            _env = env;
+        }
+
+        [HttpPost("upload-image")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UploadProductImage(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0) return BadRequest("No file uploaded.");
+
+                var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
+                var uploadsFolder = Path.Combine(webRoot, "uploads", "products");
+                
+                if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+                var extension = !string.IsNullOrEmpty(file.FileName) ? Path.GetExtension(file.FileName) : ".jpg";
+                var uniqueFileName = $"product_{DateTime.UtcNow.Ticks}{extension}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var fileStream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(fileStream);
+                }
+
+                var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+                var imageUrl = $"{baseUrl}/uploads/products/{uniqueFileName}";
+
+                return Ok(new { imageUrl });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Product image upload error: {ex.Message}");
+                return StatusCode(500, "Internal server error during image upload.");
+            }
+        }
+
+        [HttpGet("categories")]
+        public async Task<ActionResult<IEnumerable<string>>> GetCategories()
+        {
+            var categories = await _context.Products
+                .Where(p => p.IsActive && !string.IsNullOrEmpty(p.Category))
+                .Select(p => p.Category)
+                .Distinct()
+                .ToListAsync();
+
+            // Default categories if DB is empty
+            if (categories.Count == 0)
+            {
+                categories.AddRange(new[] { "Supplements", "Clothing", "Equipment", "Accessories" });
+            }
+
+            return Ok(categories);
         }
 
         [HttpGet]
@@ -31,7 +85,8 @@ namespace EmpowerAPI.Controllers
                     Description = p.Description,
                     Price = p.Price,
                     ImageUrl = p.ImageUrl,
-                    Category = p.Category
+                    Category = p.Category,
+                    StockQuantity = p.StockQuantity // Added for admin parity
                 })
                 .ToListAsync();
 

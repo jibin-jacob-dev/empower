@@ -24,19 +24,43 @@ const TrainingItem = memo(({ item, theme, onEdit, onDelete }) => (
   <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
     <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbnail} />
     <View style={styles.itemInfo}>
-      <Text style={[styles.itemTitle, { color: theme.text }]}>{item.title}</Text>
+      <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.title}</Text>
       <Text style={[styles.itemMeta, { color: theme.icon }]}>{item.category} • {item.durationMinutes}m • {item.difficulty}</Text>
     </View>
     <View style={styles.actions}>
       <TouchableOpacity 
         style={[styles.actionBtn, { backgroundColor: theme.tint + '15' }]} 
-        onPress={() => onEdit(item.id)}
+        onPress={() => onEdit(item.id, 'training')}
       >
         <Ionicons name="create-outline" size={20} color={theme.tint} />
       </TouchableOpacity>
       <TouchableOpacity 
         style={[styles.actionBtn, { backgroundColor: '#FF3B3015' }]} 
-        onPress={() => onDelete(item.id, item.title)}
+        onPress={() => onDelete(item.id, item.title, 'training')}
+      >
+        <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+      </TouchableOpacity>
+    </View>
+  </View>
+));
+
+const ProductItem = memo(({ item, theme, onEdit, onDelete }) => (
+  <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} />
+    <View style={styles.itemInfo}>
+      <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+      <Text style={[styles.itemMeta, { color: theme.icon }]}>{item.category} • ₹{item.price} • Stock: {item.stockQuantity}</Text>
+    </View>
+    <View style={styles.actions}>
+      <TouchableOpacity 
+        style={[styles.actionBtn, { backgroundColor: theme.tint + '15' }]} 
+        onPress={() => onEdit(item.id, 'product')}
+      >
+        <Ionicons name="create-outline" size={20} color={theme.tint} />
+      </TouchableOpacity>
+      <TouchableOpacity 
+        style={[styles.actionBtn, { backgroundColor: '#FF3B3015' }]} 
+        onPress={() => onDelete(item.id, item.name, 'product')}
       >
         <Ionicons name="trash-outline" size={20} color="#FF3B30" />
       </TouchableOpacity>
@@ -48,33 +72,36 @@ export default function AdminManageScreen() {
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useTheme();
   
-  const [trainings, setTrainings] = useState([]);
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('trainings');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchTrainings();
-  }, []);
+    fetchData();
+  }, [activeTab]);
 
-  const fetchTrainings = async () => {
+  const fetchData = async () => {
     try {
+      setLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await axios.get(Endpoints.Trainings, {
+      const url = activeTab === 'trainings' ? Endpoints.Trainings : Endpoints.Products;
+      const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setTrainings(response.data);
+      setData(response.data);
     } catch (error) {
       console.error('Fetch error:', error);
-      Alert.alert('Error', 'Could not fetch content list');
+      Alert.alert('Error', `Could not fetch ${activeTab} list`);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleDelete = (id, title) => {
+  const handleDelete = (id, title, type) => {
     Alert.alert(
-      "Delete Training",
+      `Delete ${type === 'training' ? 'Training' : 'Product'}`,
       `Are you sure you want to delete "${title}"?`,
       [
         { text: "Cancel", style: "cancel" },
@@ -84,10 +111,11 @@ export default function AdminManageScreen() {
           onPress: async () => {
             try {
               const token = await SecureStore.getItemAsync('userToken');
-              await axios.delete(`${Endpoints.Trainings}/${id}`, {
+              const url = type === 'training' ? Endpoints.Trainings : Endpoints.Products;
+              await axios.delete(`${url}/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
               });
-              setTrainings(prev => prev.filter(t => t.id !== id));
+              setData(prev => prev.filter(t => t.id !== id));
             } catch (err) {
               Alert.alert('Error', 'Failed to delete item');
             }
@@ -97,8 +125,14 @@ export default function AdminManageScreen() {
     );
   };
 
-  const handleEdit = (id) => {
-    router.push({ pathname: '/admin/training-editor', params: { id } });
+  const handleEdit = (id, type) => {
+    const pathname = type === 'training' ? '/admin/training-editor' : '/admin/product-editor';
+    router.push({ pathname, params: { id } });
+  };
+
+  const handleAdd = () => {
+    const pathname = activeTab === 'trainings' ? '/admin/training-editor' : '/admin/product-editor';
+    router.push(pathname);
   };
 
   return (
@@ -115,21 +149,24 @@ export default function AdminManageScreen() {
         <Text style={[styles.headerTitle, { color: theme.text }]}>Manage Content</Text>
         <TouchableOpacity 
           style={[styles.addButton, { backgroundColor: theme.tint }]}
-          onPress={() => router.push('/admin/training-editor')}
+          onPress={handleAdd}
         >
           <Ionicons name="add" size={24} color="white" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.tabs}>
-        <TouchableOpacity style={[styles.tab, styles.activeTab, { borderBottomColor: theme.tint }]}>
-          <Text style={[styles.tabText, styles.activeTabText, { color: theme.text }]}>Trainings</Text>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'trainings' && { borderBottomColor: theme.tint }]}
+          onPress={() => setActiveTab('trainings')}
+        >
+          <Text style={[styles.tabText, { color: activeTab === 'trainings' ? theme.text : theme.icon }]}>Trainings</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={styles.tab} 
-          onPress={() => Alert.alert("Coming Soon", "Products management will be enabled in next update.")}
+          style={[styles.tab, activeTab === 'products' && { borderBottomColor: theme.tint }]}
+          onPress={() => setActiveTab('products')}
         >
-          <Text style={[styles.tabText, { color: theme.icon }]}>Products</Text>
+          <Text style={[styles.tabText, { color: activeTab === 'products' ? theme.text : theme.icon }]}>Products</Text>
         </TouchableOpacity>
       </View>
 
@@ -137,23 +174,32 @@ export default function AdminManageScreen() {
         <ActivityIndicator style={{ flex: 1 }} color={theme.tint} />
       ) : (
         <FlatList
-          data={trainings}
+          data={data}
           renderItem={({ item }) => (
-            <TrainingItem 
-              item={item} 
-              theme={theme} 
-              onEdit={handleEdit} 
-              onDelete={handleDelete} 
-            />
+            activeTab === 'trainings' ? (
+              <TrainingItem 
+                item={item} 
+                theme={theme} 
+                onEdit={handleEdit} 
+                onDelete={handleDelete} 
+              />
+            ) : (
+              <ProductItem 
+                item={item} 
+                theme={theme} 
+                onEdit={handleEdit} 
+                onDelete={handleDelete} 
+              />
+            )
           )}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => (item.id || item.name).toString()}
           contentContainerStyle={[styles.list, { paddingBottom: 40 + insets.bottom }]}
-          onRefresh={fetchTrainings}
+          onRefresh={fetchData}
           refreshing={refreshing}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="cloud-offline-outline" size={60} color={theme.icon} />
-              <Text style={[styles.emptyText, { color: theme.icon }]}>No content found.</Text>
+              <Text style={[styles.emptyText, { color: theme.icon }]}>No {activeTab} found.</Text>
             </View>
           }
         />
